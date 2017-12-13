@@ -38,6 +38,7 @@ else:
     X_train = X_train.reshape(X_train.shape[0], img_rows, img_cols, 3)
     X_test = X_test.reshape(X_test.shape[0], img_rows, img_cols, 3)
     input_shape = (img_rows, img_cols, 3)
+print(input_shape)
 
 
 X_train = X_train.astype('float32')
@@ -56,10 +57,6 @@ Y_test = np_utils.to_categorical(Y_test, nb_classes)
 
 # 构建模型  
 model = Sequential()
-
-model.add(Convolution2D(nb_filters, kernel_size[0], kernel_size[1], 
-                        border_mode='same', 
-                        input_shape=input_shape)) 
 
 model.add(Convolution2D(nb_filters, (kernel_size[0], kernel_size[1]),
                         padding='same',

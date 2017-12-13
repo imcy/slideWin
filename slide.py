@@ -42,27 +42,22 @@ def rgb2gray(im):
 def getModel():
     # 构建模型
     model = Sequential()
-
-    model.add(Convolution2D(nb_filters, kernel_size[0], kernel_size[1],
-                            border_mode='same',
-                            input_shape=input_shape))
-
     model.add(Convolution2D(nb_filters, (kernel_size[0], kernel_size[1]),
                             padding='same',
                             input_shape=input_shape))  # 卷积层1
     model.add(Activation('relu'))  # 激活层
-    model.add(Convolution2D(nb_filters, (kernel_size[0], kernel_size[1])))  # 卷积层2
-    model.add(Activation('relu'))  # 激活层
+    #model.add(Convolution2D(nb_filters, (kernel_size[0], kernel_size[1])))  # 卷积层2
+    #model.add(Activation('relu'))  # 激活层
     model.add(MaxPooling2D(pool_size=pool_size))  # 池化层
     model.add(Dropout(0.25))  # 神经元随机失活
     model.add(Flatten())  # 拉成一维数据
     model.add(Dense(128))  # 全连接层1
     model.add(Activation('relu'))  # 激活层
     model.add(Dropout(0.5))  # 随机失活
-    model.add(Dense(nb_classes))  # 全连接层2
+    model.add(Dense(nb_classes))  # 输出层
     model.add(Activation('softmax'))  # Softmax评分
 
-    model_path = './models/convNet.h5'
+    model_path = './models/convNets.h5'
     model.load_weights(model_path)
     return model
 
@@ -111,13 +106,17 @@ def getAngle(image,dsize):
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 25))
     closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
 
+    # perform a series of erosions and dilations
+    closed = cv2.erode(closed, None, iterations=4)
+    closed = cv2.dilate(closed, None, iterations=4)
+
     cv2.imshow("close", closed)
     cv2.waitKey(0)
 
     (_,cnts,_) = cv2.findContours(closed.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     c = sorted(cnts, key=cv2.contourArea, reverse=True)[0]
 
-    # compute the rotated bounding box of the largest contour
+    # 计算得到面积最大的轮廓
     rect = cv2.minAreaRect(c)
     box = np.int0(cv2.boxPoints(rect))
 
@@ -138,20 +137,24 @@ def getAngle(image,dsize):
     height = math.sqrt((box[1][0] - box[0][0]) ** 2 + (box[1][1] - box[0][1]) ** 2)
     angle = math.acos((box[3][0] - box[0][0]) / width) * (180 / math.pi)
 
-    '''
-    if height>width:
+    if height<width:
         angle+=90
         width=height
-    '''
+
     cv2.imshow("angle", image)
     cv2.waitKey(0)
 
+    print(angle,width,height)
     return angle, width,height
 
-def draw(img,x,y,angle,width,height):
+def draw(img,x,y,angle,width,height,diff):
     anglePi = -angle*math.pi/180.0
     cosA = math.cos(anglePi)
     sinA = math.sin(anglePi)
+
+    x=x+diff[0]  # 与原始图片的偏差
+    y=y+diff[1]
+    height=23
 
     x1=x-0.5*width
     y1=y-0.5*height
@@ -177,18 +180,21 @@ def draw(img,x,y,angle,width,height):
     x3n= int((x3 -x)*cosA -(y3 - y)*sinA + x)
     y3n = int((x3-x)*sinA + (y3 - y)*cosA + y)
 
-    cv2.line(img,(x0n, y0n),(x1n, y1n),color=(0,0,255))
-    cv2.line(img,(x1n, y1n), (x2n, y2n), color=(255,0,0))
-    cv2.line(img,(x2n, y2n), (x3n, y3n), color=(0,0,255))
-    cv2.line(img,(x0n, y0n), (x3n, y3n), color=(255,0,0))
+    cv2.line(img,(x0n, y0n),(x1n, y1n),color=(0,0,255),thickness=2)
+    cv2.line(img,(x1n, y1n), (x2n, y2n), color=(255,0,0),thickness=2)
+    cv2.line(img,(x2n, y2n), (x3n, y3n), color=(0,0,255),thickness=2)
+    cv2.line(img,(x0n, y0n), (x3n, y3n), color=(255,0,0),thickness=2)
 
     cv2.imshow("img",img)
     cv2.waitKey(0)
 
 if __name__=="__main__":
-    image_path = './cutImage/test/4/pcd0326r.png'
-    image = cv2.imread(image_path)
-    orig = image.copy()
+    image_path = './cutImage/test/3/0pcd0392r.png'
+    imageOrig_path = './cutImage/test/3/pcd0392r.png'
+    image = cv2.imread(image_path) # 分割后图片
+    imageOrig = cv2.imread(imageOrig_path)  # 原始图片
+
+    orig = image.copy()  # 复制原始图片
     dsize = [image.shape[1]/100, image.shape[0]/100]  # 原图缩放后的缩放系数
 
     image = cv2.resize(image, (100, 100), interpolation=cv2.INTER_CUBIC)
@@ -201,20 +207,18 @@ if __name__=="__main__":
     y=int(sizeRes[1]*dsize[1])
     winW = int(sizeRes[2]*dsize[0])
     winH = int(sizeRes[3]*dsize[1])
-    #cv2.rectangle(orig, (x, y), (x + winW, y + winH), (0, 0, 255), 2)
-    print(x,y,winW,winH)
-    cv2.imshow("result2", orig)
-    cv2.waitKey(0)
+
     getx=x+winW/2  # 获得中心点坐标x
     gety=y+winH/2  # 获得中心点坐标y
-    print(getx,gety)
 
     win=orig[y:y + winH, x:x + winW]
     win=cv2.resize(win,(100,100),interpolation=cv2.INTER_CUBIC)
     dsize2 = [winW / 100, winH / 100]
 
+    diff=[274,251] # 分割图片与原图片的偏差
     angle,width,height=getAngle(win,dsize2)  # 索贝尔算子获得角度
-    draw(orig,getx,gety,angle,width,height)  # 画出抓取区域
+    draw(imageOrig,getx,gety,angle,winW,height,diff)  # 画出抓取区域
+
 
 
 
